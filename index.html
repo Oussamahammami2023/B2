@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Affichage</title>
+    <style>
+        body {
+            margin: 0;
+            padding-bottom: 60px;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #map {
+            margin-top: -100px;
+            height: 150vh;
+            width: 100%;
+            display: block;
+            z-index: 1;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #table-container {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 100%;
+            height: 100vh;
+            background: white;
+            box-shadow: -5px 0 10px rgba(0, 0, 0, 0.2);
+            transform: translateX(100%);
+            transition: transform 0.4s ease-in-out;
+            overflow-y: auto;
+            padding: 10px;
+            z-index: 2;
+        }
+        #table-container.active {
+            transform: translateX(0%);
+        }
+        .entry {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+        .bottom-bar {
+            position: fixed;
+            z-index: 10;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #fff;
+            color: white;
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 0;
+        }
+        .bottom-bar button {
+            background: none;
+            border: none;
+            color: #000;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 10px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .bottom-bar button::after {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 35%;
+            width: 30%;
+            height: 3px;
+            background-color: blue;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .bottom-bar button.active::after {
+            opacity: 1;
+        }
+    </style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+</head>
+<body>
+
+    <!-- الخريطة -->
+    <div id="map"></div>
+
+    <!-- قائمة البيانات -->
+    <div id="table-container"></div>
+
+    <!-- شريط التنقل السفلي -->
+    <div class="bottom-bar">
+        <button id="btn-map" class="active" onclick="showMap()">🗺️ <span>Map</span></button>
+        <button id="btn-table" onclick="showTable()">📋 <span>Commend</span></button>
+    </div>
+
+    <script>
+        var map = L.map('map').setView([36.647980, 9.613499], 14);
+
+        L.tileLayer('https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(map);
+
+        async function fetchData() {
+            const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRTTidZ-wSwOZY74lBIykubXhx4XPjutCSDS0hNO5OD7PRRA3fvtePayPA5OE5wwtUFbZpPX2U739Ma/pub?output=csv";
+            
+            try {
+                const response = await fetch(url);
+                const data = await response.text();
+                const rows = data.split("\n").map(row => splitCSVRow(row));
+
+                const container = document.querySelector("#table-container");
+
+                for (let i = 1; i < rows.length; i++) {  
+                    let row = rows[i];
+
+                    if (row.length < 6) continue;
+
+                    let coordinates = row[0].split(",");
+                    let latitude = parseFloat(coordinates[0].trim());
+                    let longitude = parseFloat(coordinates[1].trim());
+
+                    if (isNaN(latitude) || isNaN(longitude)) continue;
+
+                    let date = row[1] || "N/A";
+                    let nom = row[2] || "N/A";
+                    let telephone = row[3] || "N/A";
+                    let adresse = row[4] || "N/A";
+                    let product_id = row[5] || "N/A";
+
+                    let entryDiv = document.createElement("div");
+                    entryDiv.classList.add("entry");
+
+                    entryDiv.innerHTML = `
+                        <table>
+                            <tr><th>Date de soumission</th><td>${date}</td></tr>
+                            <tr><th>Nom</th><td>${nom}</td></tr>
+                            <tr><th>Téléphone</th><td>${telephone}</td></tr>
+                            <tr><th>Adresse de livraison</th><td>${adresse}</td></tr>
+                            <tr><th>Product ID</th><td>${product_id}</td></tr>
+                        </table>
+                    `;
+                    container.appendChild(entryDiv);
+
+                    let marker = L.marker([latitude, longitude]).addTo(map);
+
+                    marker.bindPopup(`
+                        <strong>Nom:</strong> ${nom} <br>
+                        <strong>Téléphone:</strong> ${telephone} <br>
+                        <strong>Adresse:</strong> ${adresse} <br>
+                        <strong>Produit ID:</strong> ${product_id} <br>
+                        <strong>Date:</strong> ${date}
+                    `);
+                }
+            } catch (error) {
+                console.error("Erreur lors de la récupération des données:", error);
+            }
+        }
+
+        function splitCSVRow(row) {
+            const regex = /(".*?"|[^",]+)(?=\s*,|\s*$)/g;
+            return [...row.matchAll(regex)].map(match => match[1].replace(/(^"|"$)/g, ""));
+        }
+
+        fetchData();
+
+        function showMap() {
+            document.getElementById('table-container').classList.remove('active');
+            document.getElementById('map').style.display = 'block';
+
+            document.getElementById('btn-map').classList.add('active');
+            document.getElementById('btn-table').classList.remove('active');
+        }
+
+        function showTable() {
+            document.getElementById('map').style.display = 'none';
+            document.getElementById('table-container').classList.add('active');
+
+            document.getElementById('btn-table').classList.add('active');
+            document.getElementById('btn-map').classList.remove('active');
+        }
+
+        window.onload = showMap; // جعل الخريطة تظهر عند فتح الصفحة
+    </script>
+
+</body>
+</html>
